@@ -48,7 +48,6 @@ class MainActivity : ComponentActivity() {
 }
 
 
-
 // Componente reutilizable: El Logo "C"
 @Composable
 fun LogoC() {
@@ -79,6 +78,9 @@ fun TopBar(title: String = "", onBackClick: () -> Unit) {
     }
 }
 
+// ==========================================
+// PANTALLAS DEL FLUJO
+// ==========================================
 
 // --- PANTALLA: LOGIN ---
 @Composable
@@ -143,6 +145,57 @@ fun RegisterScreen(navController: NavController) {
                 colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
             ) {
                 Text("Register")
+            }
+        }
+    }
+}
+
+// --- PANTALLA: DASHBOARD ---
+@Composable
+fun DashboardScreen(navController: NavController) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Top Header
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Perfil
+            Box(
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.Gray).clickable { navController.navigate("mis_propuestas") }
+            )
+            // Buscador
+            OutlinedTextField(
+                value = "", onValueChange = {}, placeholder = { Text("Buscar tarea") },
+                modifier = Modifier.weight(1f).height(50.dp).padding(horizontal = 8.dp),
+                shape = RoundedCornerShape(25.dp)
+            )
+            // Iconos
+            IconButton(onClick = { navController.navigate("chats") }) {
+                Icon(Icons.Default.Email, contentDescription = "Chats", tint = BluePrimary)
+            }
+            IconButton(onClick = { navController.navigate("publicar") }) {
+                Icon(Icons.Default.Add, contentDescription = "Publicar", tint = BluePrimary)
+            }
+        }
+
+        // Lista de Propuestas
+        LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+            items(4) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().height(120.dp).padding(vertical = 8.dp).clickable { navController.navigate("vista_propuesta") },
+                    colors = CardDefaults.cardColors(containerColor = BlueLight),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(60.dp).clip(CircleShape).background(Color.LightGray)) // Imagen placeholder
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text("BUSCO PROGRAMADOR", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("ESPECIFICACION DE LA TAREA", color = Color.White, fontSize = 12.sp)
+                        }
+                    }
+                }
             }
         }
     }
