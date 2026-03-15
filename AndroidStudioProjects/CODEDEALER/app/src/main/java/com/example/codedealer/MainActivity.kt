@@ -40,13 +40,31 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = BackgroundGray
                 ) {
-
+                    AppNavigation()
                 }
             }
         }
     }
 }
 
+// ==========================================
+// 1. NAVEGACIÓN PRINCIPAL (EL FLUJO DE TUS FLECHAS)
+// ==========================================
+@Composable
+fun AppNavigation() {
+    val navController = rememberNavController()
+
+    NavHost(navController = navController, startDestination = "login") {
+        composable("login") { LoginScreen(navController) }
+        composable("register") { RegisterScreen(navController) }
+        composable("dashboard") { DashboardScreen(navController) }
+        composable("mis_propuestas") { MisPropuestasScreen(navController) }
+        composable("chats") { ChatsScreen(navController) }
+        composable("publicar") { PublicarScreen(navController) }
+        composable("vista_propuesta") { VistaPropuestaScreen(navController) }
+        composable("chat") { ChatScreen(navController) }
+    }
+}
 
 // Componente reutilizable: El Logo "C"
 @Composable
@@ -195,6 +213,64 @@ fun DashboardScreen(navController: NavController) {
                             Text("ESPECIFICACION DE LA TAREA", color = Color.White, fontSize = 12.sp)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+// --- PANTALLA: MIS PROPUESTAS ---
+@Composable
+fun MisPropuestasScreen(navController: NavController) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopBar { navController.popBackStack() }
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(modifier = Modifier.size(150.dp).clip(CircleShape).background(Color.LightGray)) // Avatar grande
+            Spacer(modifier = Modifier.height(32.dp))
+
+            LazyColumn {
+                items(4) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).background(BlueLight, RoundedCornerShape(12.dp)).padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("TAREA", color = Color.White, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Delete, contentDescription = "Borrar", tint = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// --- PANTALLA: VISTA PROPUESTA ---
+@Composable
+fun VistaPropuestaScreen(navController: NavController) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopBar { navController.popBackStack() }
+        Card(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            colors = CardDefaults.cardColors(containerColor = BlueLight),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(modifier = Modifier.size(80.dp).clip(CircleShape).background(Color.LightGray))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("BUSCO PROGRAMADOR", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                Text("ESPECIALIZADO EN PYTHON", color = Color.White, fontSize = 16.sp, textAlign = TextAlign.Center)
+                Spacer(modifier = Modifier.height(32.dp))
+                Text("especificacion de la tarea...", color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+
+                Button(
+                    onClick = { navController.navigate("chat") },
+                    modifier = Modifier.fillMaxWidth(0.6f).height(40.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
+                ) {
+                    Text("CONTACTAR")
                 }
             }
         }
