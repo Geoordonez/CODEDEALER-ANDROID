@@ -40,31 +40,13 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = BackgroundGray
                 ) {
-                    AppNavigation()
+
                 }
             }
         }
     }
 }
 
-// ==========================================
-// 1. NAVEGACIÓN PRINCIPAL (EL FLUJO DE TUS FLECHAS)
-// ==========================================
-@Composable
-fun AppNavigation() {
-    val navController = rememberNavController()
-
-    NavHost(navController = navController, startDestination = "login") {
-        composable("login") { LoginScreen(navController) }
-        composable("register") { RegisterScreen(navController) }
-        composable("dashboard") { DashboardScreen(navController) }
-        composable("mis_propuestas") { MisPropuestasScreen(navController) }
-        composable("chats") { ChatsScreen(navController) }
-        composable("publicar") { PublicarScreen(navController) }
-        composable("vista_propuesta") { VistaPropuestaScreen(navController) }
-        composable("chat") { ChatScreen(navController) }
-    }
-}
 
 // Componente reutilizable: El Logo "C"
 @Composable
@@ -272,6 +254,26 @@ fun VistaPropuestaScreen(navController: NavController) {
                 ) {
                     Text("CONTACTAR")
                 }
+            }
+        }
+    }
+}
+
+// --- PANTALLA: PUBLICAR ---
+@Composable
+fun PublicarScreen(navController: NavController) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopBar { navController.popBackStack() }
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp).background(BlueLight, RoundedCornerShape(24.dp)).padding(24.dp)) {
+            Text("EDITAR TITULO", color = Color.White, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(32.dp))
+            Text("EDITAR...", color = Color.White, modifier = Modifier.weight(1f))
+            Button(
+                onClick = { navController.popBackStack() }, // Al publicar, regresamos al Dashboard
+                modifier = Modifier.align(Alignment.End),
+                colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
+            ) {
+                Text("PUBLICAR")
             }
         }
     }
