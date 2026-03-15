@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
 }
 
 
+
 // Componente reutilizable: El Logo "C"
 @Composable
 fun LogoC() {
@@ -61,6 +62,23 @@ fun LogoC() {
         Text("C", color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Bold)
     }
 }
+
+// Componente reutilizable: Barra superior con botón de regreso
+@Composable
+fun TopBar(title: String = "", onBackClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBackClick) {
+            Icon(Icons.Default.ArrowBack, contentDescription = "Regresar")
+        }
+        if (title.isNotEmpty()) {
+            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+        }
+    }
+}
+
 
 // --- PANTALLA: LOGIN ---
 @Composable
@@ -95,5 +113,37 @@ fun LoginScreen(navController: NavController) {
         }
         Spacer(modifier = Modifier.height(16.dp))
         Text("Forgot password?", color = BluePrimary, fontSize = 14.sp)
+    }
+}
+
+// --- PANTALLA: REGISTER ---
+@Composable
+fun RegisterScreen(navController: NavController) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopBar { navController.popBackStack() }
+
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            LogoC()
+            Spacer(modifier = Modifier.height(48.dp))
+            OutlinedTextField(value = "", onValueChange = {}, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(value = "", onValueChange = {}, label = { Text("Password") }, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Checkbox(checked = true, onCheckedChange = {})
+                Text("Remember me")
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+            Button(
+                onClick = { navController.navigate("dashboard") },
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
+            ) {
+                Text("Register")
+            }
+        }
     }
 }
