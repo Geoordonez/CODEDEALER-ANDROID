@@ -40,13 +40,31 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = BackgroundGray
                 ) {
-
+                    AppNavigation()
                 }
             }
         }
     }
 }
 
+// ==========================================
+// 1. NAVEGACIÓN PRINCIPAL (EL FLUJO DE TUS FLECHAS)
+// ==========================================
+@Composable
+fun AppNavigation() {
+    val navController = rememberNavController()
+
+    NavHost(navController = navController, startDestination = "login") {
+        composable("login") { LoginScreen(navController) }
+        composable("register") { RegisterScreen(navController) }
+        composable("dashboard") { DashboardScreen(navController) }
+        composable("mis_propuestas") { MisPropuestasScreen(navController) }
+        composable("chats") { ChatsScreen(navController) }
+        composable("publicar") { PublicarScreen(navController) }
+        composable("vista_propuesta") { VistaPropuestaScreen(navController) }
+        composable("chat") { ChatScreen(navController) }
+    }
+}
 
 // Componente reutilizable: El Logo "C"
 @Composable
@@ -274,6 +292,60 @@ fun PublicarScreen(navController: NavController) {
                 colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
             ) {
                 Text("PUBLICAR")
+            }
+        }
+    }
+}
+
+// --- PANTALLA: CHATS (LISTA) ---
+@Composable
+fun ChatsScreen(navController: NavController) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopBar { navController.popBackStack() }
+        OutlinedTextField(
+            value = "", onValueChange = {}, placeholder = { Text("Buscar chat") },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            shape = RoundedCornerShape(25.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+            items(6) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).background(BlueLight, RoundedCornerShape(24.dp)).padding(12.dp).clickable { navController.navigate("chat") },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.size(50.dp).clip(CircleShape).background(Color.LightGray))
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text("NOMBRE USUARIO", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+// --- PANTALLA: CHAT (MENSAJES) ---
+@Composable
+fun ChatScreen(navController: NavController) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopBar { navController.popBackStack() }
+        // Área de mensajes
+        Column(modifier = Modifier.weight(1f).padding(16.dp)) {
+            Box(modifier = Modifier.background(Color.White, RoundedCornerShape(8.dp)).padding(16.dp).align(Alignment.End)) {
+                Text("Hola, vi tu propuesta!")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(modifier = Modifier.background(BlueLight, RoundedCornerShape(8.dp)).padding(16.dp).align(Alignment.Start)) {
+                Text("Hola! Claro, dime...", color = Color.White)
+            }
+        }
+        // Input abajo
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp).background(Color.White, RoundedCornerShape(25.dp)).padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Escribe un mensaje...", color = Color.Gray, modifier = Modifier.weight(1f).padding(start = 8.dp))
+            Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(BluePrimary), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Send, contentDescription = "Enviar", tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
     }
