@@ -1,5 +1,12 @@
 package com.example.codedealer
 
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -53,19 +60,24 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+    val geminiVm: GeminiViewModel = viewModel() // Asegúrate de tener el import de lifecycle-viewmodel-compose
 
     NavHost(navController = navController, startDestination = "login") {
         composable("login") { LoginScreen(navController) }
         composable("register") { RegisterScreen(navController) }
         composable("dashboard") { DashboardScreen(navController) }
         composable("mis_propuestas") { MisPropuestasScreen(navController) }
+
+        // Si ChatsScreen ahora pide geminiVm, dáselo así:
         composable("chats") { ChatsScreen(navController) }
+
         composable("publicar") { PublicarScreen(navController) }
         composable("vista_propuesta") { VistaPropuestaScreen(navController) }
-        composable("chat") { ChatScreen(navController) }
+
+        // Esta es la más importante
+        composable("chat") { ChatScreen(navController, geminiVm) }
     }
 }
-
 // Componente reutilizable: El Logo "C"
 @Composable
 fun LogoC() {
@@ -301,22 +313,67 @@ fun PublicarScreen(navController: NavController) {
 @Composable
 fun ChatsScreen(navController: NavController) {
     Column(modifier = Modifier.fillMaxSize()) {
-        TopBar { navController.popBackStack() }
+        // Le ponemos título a la barra para saber dónde estamos
+        TopBar("Mis Mensajes") { navController.popBackStack() }
+
         OutlinedTextField(
-            value = "", onValueChange = {}, placeholder = { Text("Buscar chat") },
+            value = "",
+            onValueChange = {},
+            placeholder = { Text("Buscar chat") },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             shape = RoundedCornerShape(25.dp)
         )
+
         Spacer(modifier = Modifier.height(16.dp))
+
         LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
-            items(6) {
+
+            // --- 1. BOTÓN ESPECIAL PARA LA IA (Siempre al principio) ---
+            item {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).background(BlueLight, RoundedCornerShape(24.dp)).padding(12.dp).clickable { navController.navigate("chat") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .background(BluePrimary, RoundedCornerShape(24.dp)) // Azul fuerte para resaltar
+                        .padding(12.dp)
+                        .clickable { navController.navigate("chat") }, // Manda a la pantalla de Gemini
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(Color.White),
+                        contentAlignment = Alignment.Center
+                    ) {
+
+                        Icon(Icons.Default.Face, contentDescription = null, tint = BluePrimary)
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text("ASISTENTE VIRTUAL", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Pregúntale lo que quieras a Gemini", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+                    }
+                }
+            }
+
+            // --- 2. LISTA DE CHATS NORMALES (Usuarios) ---
+            items(6) { indice ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .background(BlueLight, RoundedCornerShape(24.dp)) // Azul claro para usuarios
+                        .padding(12.dp)
+                        .clickable {
+                            // Aquí no mandamos a "chat" (IA), por ahora no hace nada
+                            // o podrías mandarlo a una pantalla de chat genérica
+                        },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(modifier = Modifier.size(50.dp).clip(CircleShape).background(Color.LightGray))
                     Spacer(modifier = Modifier.width(16.dp))
-                    Text("NOMBRE USUARIO", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("USUARIO DE PRUEBA $indice", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -325,27 +382,68 @@ fun ChatsScreen(navController: NavController) {
 
 // --- PANTALLA: CHAT (MENSAJES) ---
 @Composable
-fun ChatScreen(navController: NavController) {
+fun ChatScreen(navController: NavController, geminiVm: GeminiViewModel) {
+    // Observamos los estados del ViewModel
+    val respuestaIA by geminiVm.respuestaIA.collectAsState()
+    val estaCargando by geminiVm.estaCargando.collectAsState()
+
+    // Estado para que el usuario pueda escribir
+    var textoUsuario by remember { mutableStateOf("") }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        TopBar { navController.popBackStack() }
-        // Área de mensajes
+        TopBar("Chat con Gemini") { navController.popBackStack() }
+
+        // Área de mensajes (Historial)
         Column(modifier = Modifier.weight(1f).padding(16.dp)) {
-            Box(modifier = Modifier.background(Color.White, RoundedCornerShape(8.dp)).padding(16.dp).align(Alignment.End)) {
-                Text("Hola, vi tu propuesta!")
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Box(modifier = Modifier.background(BlueLight, RoundedCornerShape(8.dp)).padding(16.dp).align(Alignment.Start)) {
-                Text("Hola! Claro, dime...", color = Color.White)
+            // Burbuja de la IA
+            Box(
+                modifier = Modifier
+                    .background(if (estaCargando) Color.Gray else BlueLight, RoundedCornerShape(12.dp))
+                    .padding(16.dp)
+                    .align(Alignment.Start)
+            ) {
+                Text(
+                    text = if (estaCargando) "Gemini está escribiendo..." else respuestaIA,
+                    color = Color.White
+                )
             }
         }
-        // Input abajo
+
+        // Input de texto real
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp).background(Color.White, RoundedCornerShape(25.dp)).padding(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .background(Color.White, RoundedCornerShape(25.dp))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Escribe un mensaje...", color = Color.Gray, modifier = Modifier.weight(1f).padding(start = 8.dp))
-            Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(BluePrimary), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Send, contentDescription = "Enviar", tint = Color.White, modifier = Modifier.size(20.dp))
+            // TextField para que el teclado funcione
+            BasicTextField(
+                value = textoUsuario,
+                onValueChange = { textoUsuario = it },
+                modifier = Modifier.weight(1f),
+                decorationBox = { innerTextField ->
+                    if (textoUsuario.isEmpty()) Text("Pregúntale algo a la IA...", color = Color.Gray)
+                    innerTextField()
+                }
+            )
+
+            // Botón de enviar funcional
+            IconButton(
+                onClick = {
+                    if (textoUsuario.isNotEmpty()) {
+                        geminiVm.preguntarAGemini(textoUsuario)
+                        textoUsuario = "" // Limpiar el campo
+                    }
+                },
+                enabled = !estaCargando && textoUsuario.isNotEmpty()
+            ) {
+                Icon(
+                    Icons.Default.Send,
+                    contentDescription = "Enviar",
+                    tint = if (estaCargando) Color.Gray else BluePrimary
+                )
             }
         }
     }

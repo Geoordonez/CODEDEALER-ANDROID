@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "842241788602",
+    "project_id": "codedealer-d4e72",
+    "storage_bucket": "codedealer-d4e72.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:842241788602:android:24d6991015fa1090571083",
+        "android_client_info": {
+          "package_name": "com.example.codedealer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBm5wVqulJBhagqPoYgIOzsi9HFuS-8lrw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
