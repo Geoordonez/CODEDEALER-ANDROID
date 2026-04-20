@@ -1,5 +1,14 @@
 package com.example.codedealer
 
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.ValueEventListener
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.getValue
@@ -38,16 +47,27 @@ val BluePrimary = Color(0xFF0055FF)
 val BlueLight = Color(0xFF4D88FF)
 val BackgroundGray = Color(0xFFF5F5F5)
 
+data class Propuesta(
+    val id: String = "",
+    val titulo: String = "",
+    val descripcion: String = "",
+    val autorId: String = "",
+    val fecha: String = ""
+)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val auth = Firebase.auth
+
         setContent {
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = BackgroundGray
                 ) {
-                    AppNavigation()
+
+                    AppNavigation(auth)
                 }
             }
         }
@@ -58,23 +78,28 @@ class MainActivity : ComponentActivity() {
 // 1. NAVEGACIÓN PRINCIPAL (EL FLUJO DE TUS FLECHAS)
 // ==========================================
 @Composable
-fun AppNavigation() {
+fun AppNavigation(auth: FirebaseAuth) {
     val navController = rememberNavController()
-    val geminiVm: GeminiViewModel = viewModel() // Asegúrate de tener el import de lifecycle-viewmodel-compose
+    val geminiVm: GeminiViewModel = viewModel()
 
     NavHost(navController = navController, startDestination = "login") {
-        composable("login") { LoginScreen(navController) }
-        composable("register") { RegisterScreen(navController) }
+
+        composable("login") {
+            LoginScreen(navController, auth)
+        }
+
+        composable("register") {
+            RegisterScreen(navController, auth)
+        }
+
         composable("dashboard") { DashboardScreen(navController) }
-        composable("mis_propuestas") { MisPropuestasScreen(navController) }
 
-        // Si ChatsScreen ahora pide geminiVm, dáselo así:
         composable("chats") { ChatsScreen(navController) }
-
-        composable("publicar") { PublicarScreen(navController) }
-        composable("vista_propuesta") { VistaPropuestaScreen(navController) }
-
-        // Esta es la más importante
+        // ¡Aquí está el cambio! Le pasamos el 'auth' a PublicarScreen
+        composable("publicar") {
+            PublicarScreen(navController, auth)
+        }
+        composable("mis_propuestas") { MisPropuestasScreen(navController, auth) }
         composable("chat") { ChatScreen(navController, geminiVm) }
     }
 }
@@ -114,7 +139,12 @@ fun TopBar(title: String = "", onBackClick: () -> Unit) {
 
 // --- PANTALLA: LOGIN ---
 @Composable
-fun LoginScreen(navController: NavController) {
+fun LoginScreen(navController: NavController, auth: FirebaseAuth) {
+    // 1. Estados para guardar lo que el usuario escribe
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -123,19 +153,52 @@ fun LoginScreen(navController: NavController) {
         LogoC()
         Spacer(modifier = Modifier.height(48.dp))
 
-        OutlinedTextField(value = "", onValueChange = {}, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
+        // 2. Campo de Email funcional
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Email") },
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(modifier = Modifier.height(16.dp))
-        OutlinedTextField(value = "", onValueChange = {}, label = { Text("Password") }, modifier = Modifier.fillMaxWidth())
+
+        // 3. Campo de Password funcional
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(modifier = Modifier.height(32.dp))
 
+        // 4. Botón con lógica de Firebase para iniciar sesión
         Button(
-            onClick = { navController.navigate("dashboard") },
+            onClick = {
+                if (email.isNotEmpty() && password.isNotEmpty()) {
+                    auth.signInWithEmailAndPassword(email, password)
+                        .addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                Toast.makeText(context, "¡Inicio de sesión exitoso!", Toast.LENGTH_SHORT).show()
+                                navController.navigate("dashboard") {
+                                    // Esto evita que al darle "atrás" vuelva al login
+                                    popUpTo("login") { inclusive = true }
+                                }
+                            } else {
+                                Toast.makeText(context, "Error: Verifica tus datos", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                } else {
+                    Toast.makeText(context, "Por favor, llena todos los campos", Toast.LENGTH_SHORT).show()
+                }
+            },
             modifier = Modifier.fillMaxWidth().height(50.dp),
             colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
         ) {
             Text("Sign In")
         }
+
         Spacer(modifier = Modifier.height(16.dp))
+
         Button(
             onClick = { navController.navigate("register") },
             modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -147,10 +210,14 @@ fun LoginScreen(navController: NavController) {
         Text("Forgot password?", color = BluePrimary, fontSize = 14.sp)
     }
 }
-
 // --- PANTALLA: REGISTER ---
 @Composable
-fun RegisterScreen(navController: NavController) {
+fun RegisterScreen(navController: NavController, auth: FirebaseAuth) {
+    // 1. Aquí declaramos las variables que te marcaban error
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
     Column(modifier = Modifier.fillMaxSize()) {
         TopBar { navController.popBackStack() }
 
@@ -160,21 +227,64 @@ fun RegisterScreen(navController: NavController) {
         ) {
             LogoC()
             Spacer(modifier = Modifier.height(48.dp))
-            OutlinedTextField(value = "", onValueChange = {}, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
+
+            // Campo de Email
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text("Email") },
+                modifier = Modifier.fillMaxWidth()
+            )
             Spacer(modifier = Modifier.height(16.dp))
-            OutlinedTextField(value = "", onValueChange = {}, label = { Text("Password") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Checkbox(checked = true, onCheckedChange = {})
-                Text("Remember me")
-            }
+
+            // Campo de Password
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Password") },
+                modifier = Modifier.fillMaxWidth()
+            )
             Spacer(modifier = Modifier.height(32.dp))
+
+            // Botón con toda la lógica de Firebase integrada
             Button(
-                onClick = { navController.navigate("dashboard") },
+                onClick = {
+                    if (email.isNotEmpty() && password.isNotEmpty()) {
+                        auth.createUserWithEmailAndPassword(email, password)
+                            .addOnCompleteListener { task ->
+                                if (task.isSuccessful) {
+                                    val userId = auth.currentUser?.uid
+
+                                    val userMap = mapOf(
+                                        "email" to email,
+                                        "rol" to "usuario",
+                                        "fecha_registro" to System.currentTimeMillis().toString()
+                                    )
+
+                                    if (userId != null) {
+                                        val database = FirebaseDatabase.getInstance().reference
+
+                                        database.child("Usuarios").child(userId).setValue(userMap)
+                                            .addOnSuccessListener {
+                                                Toast.makeText(context, "¡Usuario guardado en BD!", Toast.LENGTH_SHORT).show()
+                                                navController.navigate("dashboard")
+                                            }
+                                            .addOnFailureListener { e ->
+                                                Toast.makeText(context, "Error BD: ${e.message}", Toast.LENGTH_LONG).show()
+                                            }
+                                    }
+                                } else {
+                                    Toast.makeText(context, "Error: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                    } else {
+                        Toast.makeText(context, "Llena todos los campos", Toast.LENGTH_SHORT).show()
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
             ) {
-                Text("Register")
+                Text("Register Now")
             }
         }
     }
@@ -183,6 +293,33 @@ fun RegisterScreen(navController: NavController) {
 // --- PANTALLA: DASHBOARD ---
 @Composable
 fun DashboardScreen(navController: NavController) {
+    // 1. Estado para guardar la lista de propuestas que descargaremos de Firebase
+    var listaPropuestas by remember { mutableStateOf<List<Propuesta>>(emptyList()) }
+
+    // 2. Descargar los datos de Firebase en tiempo real
+    LaunchedEffect(Unit) {
+        val database = FirebaseDatabase.getInstance().getReference("Propuestas")
+
+        database.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val propuestasTemp = mutableListOf<Propuesta>()
+                // Recorremos cada propuesta guardada en la base de datos
+                for (hijo in snapshot.children) {
+                    val propuesta = hijo.getValue(Propuesta::class.java)
+                    if (propuesta != null) {
+                        propuestasTemp.add(propuesta)
+                    }
+                }
+                // Las invertimos para que las más nuevas salgan hasta arriba
+                listaPropuestas = propuestasTemp.reversed()
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                // Si hay un error de conexión, no hacemos nada grave por ahora
+            }
+        })
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         // Top Header
         Row(
@@ -209,20 +346,41 @@ fun DashboardScreen(navController: NavController) {
             }
         }
 
-        // Lista de Propuestas
+        // 3. Lista de Propuestas REALES
         LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
-            items(4) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().height(120.dp).padding(vertical = 8.dp).clickable { navController.navigate("vista_propuesta") },
-                    colors = CardDefaults.cardColors(containerColor = BlueLight),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(60.dp).clip(CircleShape).background(Color.LightGray)) // Imagen placeholder
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text("BUSCO PROGRAMADOR", color = Color.White, fontWeight = FontWeight.Bold)
-                            Text("ESPECIFICACION DE LA TAREA", color = Color.White, fontSize = 12.sp)
+            // Si no hay propuestas, podemos mostrar un mensajito
+            if (listaPropuestas.isEmpty()) {
+                item {
+                    Text(
+                        text = "Aún no hay propuestas publicadas. ¡Sé el primero!",
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                        color = Color.Gray
+                    )
+                }
+            } else {
+                // Aquí creamos una tarjeta por cada propuesta real en la BD
+                items(listaPropuestas.size) { index ->
+                    val propuesta = listaPropuestas[index]
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .padding(vertical = 8.dp)
+                            .clickable { navController.navigate("vista_propuesta") },
+                        colors = CardDefaults.cardColors(containerColor = BlueLight),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(60.dp).clip(CircleShape).background(Color.LightGray)) // Imagen placeholder
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                // Mostramos el TÍTULO real
+                                Text(propuesta.titulo.uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
+                                // Mostramos la DESCRIPCIÓN real (limitada a 2 líneas para que no se desborde)
+                                Text(propuesta.descripcion, color = Color.White, fontSize = 12.sp, maxLines = 2)
+                            }
                         }
                     }
                 }
@@ -230,32 +388,108 @@ fun DashboardScreen(navController: NavController) {
         }
     }
 }
-
 // --- PANTALLA: MIS PROPUESTAS ---
 @Composable
-fun MisPropuestasScreen(navController: NavController) {
+fun MisPropuestasScreen(navController: NavController, auth: FirebaseAuth) {
+    // 1. Estado para guardar solo MIS propuestas
+    var misPropuestas by remember { mutableStateOf<List<Propuesta>>(emptyList()) }
+    val userId = auth.currentUser?.uid // El ID del usuario actual
+
+    // NUEVO: Necesitamos el contexto para mostrar el mensajito de "Eliminada"
+    val context = LocalContext.current
+
+    // 2. Descargar y filtrar datos de Firebase
+    LaunchedEffect(userId) {
+        if (userId != null) {
+            val database = FirebaseDatabase.getInstance().getReference("Propuestas")
+
+            database.addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val propuestasTemp = mutableListOf<Propuesta>()
+
+                    // Recorremos todas las propuestas
+                    for (hijo in snapshot.children) {
+                        val propuesta = hijo.getValue(Propuesta::class.java)
+
+                        // FILTRO CLAVE: Solo agregamos si el autor es el usuario actual
+                        if (propuesta != null && propuesta.autorId == userId) {
+                            propuestasTemp.add(propuesta)
+                        }
+                    }
+                    // Las invertimos para ver la más reciente primero
+                    misPropuestas = propuestasTemp.reversed()
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    // Manejo de errores
+                }
+            })
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        TopBar { navController.popBackStack() }
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        TopBar("Mi Perfil") { navController.popBackStack() }
+
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Box(modifier = Modifier.size(150.dp).clip(CircleShape).background(Color.LightGray)) // Avatar grande
             Spacer(modifier = Modifier.height(32.dp))
 
-            LazyColumn {
-                items(4) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).background(BlueLight, RoundedCornerShape(12.dp)).padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("TAREA", color = Color.White, fontWeight = FontWeight.Bold)
-                        Icon(Icons.Default.Delete, contentDescription = "Borrar", tint = Color.White)
+            Text("MIS TAREAS PUBLICADAS", fontWeight = FontWeight.Bold, color = BluePrimary)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 3. Mostramos la lista o un mensaje si está vacía
+            if (misPropuestas.isEmpty()) {
+                Text("Aún no has publicado ninguna tarea.", color = Color.Gray, textAlign = TextAlign.Center)
+            } else {
+
+                // 🛑 SOLUCIÓN 1: Le agregamos .weight(1f) para darle un límite de tamaño seguro 🛑
+                LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    items(misPropuestas.size) { index ->
+                        val propuesta = misPropuestas[index]
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                                .background(BlueLight, RoundedCornerShape(12.dp))
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+
+                            val tituloSeguro = propuesta.titulo.toString().uppercase()
+
+                            Text(tituloSeguro, color = Color.White, fontWeight = FontWeight.Bold)
+
+                            IconButton(
+                                onClick = {
+                                    if (propuesta.id.isNotEmpty()) {
+                                        // 1. Apuntamos a la carpeta Propuestas y luego al ID específico
+                                        val databaseRef = FirebaseDatabase.getInstance().getReference("Propuestas").child(propuesta.id)
+
+                                        // 2. Ejecutamos la eliminación
+                                        databaseRef.removeValue()
+                                            .addOnSuccessListener {
+                                                Toast.makeText(context, "Tarea eliminada", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .addOnFailureListener {
+                                                Toast.makeText(context, "Error al eliminar", Toast.LENGTH_SHORT).show()
+                                            }
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "Borrar", tint = Color.White)
+                            }
+                        }
                     }
                 }
             }
         }
     }
 }
-
 // --- PANTALLA: VISTA PROPUESTA ---
 @Composable
 fun VistaPropuestaScreen(navController: NavController) {
@@ -290,16 +524,95 @@ fun VistaPropuestaScreen(navController: NavController) {
 }
 
 // --- PANTALLA: PUBLICAR ---
+// --- PANTALLA: PUBLICAR ---
 @Composable
-fun PublicarScreen(navController: NavController) {
+fun PublicarScreen(navController: NavController, auth: FirebaseAuth) {
+    // 1. Estados para guardar lo que el usuario escribe
+    var titulo by remember { mutableStateOf("") }
+    var descripcion by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
     Column(modifier = Modifier.fillMaxSize()) {
-        TopBar { navController.popBackStack() }
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp).background(BlueLight, RoundedCornerShape(24.dp)).padding(24.dp)) {
-            Text("EDITAR TITULO", color = Color.White, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(32.dp))
-            Text("EDITAR...", color = Color.White, modifier = Modifier.weight(1f))
+        TopBar("Nueva Propuesta") { navController.popBackStack() }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .background(BlueLight, RoundedCornerShape(24.dp))
+                .padding(24.dp)
+        ) {
+
+            // 2. Campo para el Título
+            OutlinedTextField(
+                value = titulo,
+                onValueChange = { titulo = it },
+                label = { Text("Título de la tarea", color = Color.White) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.White,
+                    unfocusedBorderColor = Color.White,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    cursorColor = Color.White
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 3. Campo para la Descripción (ocupa el resto de la pantalla)
+            OutlinedTextField(
+                value = descripcion,
+                onValueChange = { descripcion = it },
+                label = { Text("Describe los detalles de lo que buscas...", color = Color.White) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.White,
+                    unfocusedBorderColor = Color.White,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    cursorColor = Color.White
+                ),
+                modifier = Modifier.fillMaxWidth().weight(1f)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 4. Botón para enviar a la Base de Datos
             Button(
-                onClick = { navController.popBackStack() }, // Al publicar, regresamos al Dashboard
+                onClick = {
+                    val userId = auth.currentUser?.uid // Obtenemos el ID de quien publica
+
+                    if (titulo.isNotEmpty() && descripcion.isNotEmpty() && userId != null) {
+                        // Conectamos a la BD
+                        val database = FirebaseDatabase.getInstance().reference
+
+                        // Generamos un ID único para esta propuesta
+                        val propuestaId = database.child("Propuestas").push().key
+
+                        // Preparamos los datos
+                        val propuestaMap = mapOf(
+                            "id" to propuestaId,
+                            "titulo" to titulo,
+                            "descripcion" to descripcion,
+                            "autorId" to userId,
+                            "fecha" to System.currentTimeMillis().toString()
+                        )
+
+                        // Lo guardamos en la carpeta "Propuestas"
+                        if (propuestaId != null) {
+                            database.child("Propuestas").child(propuestaId).setValue(propuestaMap)
+                                .addOnSuccessListener {
+                                    Toast.makeText(context, "¡Propuesta publicada!", Toast.LENGTH_SHORT).show()
+                                    navController.popBackStack() // Regresamos al dashboard
+                                }
+                                .addOnFailureListener { e ->
+                                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                        }
+                    } else {
+                        Toast.makeText(context, "Llena todos los campos", Toast.LENGTH_SHORT).show()
+                    }
+                },
                 modifier = Modifier.align(Alignment.End),
                 colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
             ) {
@@ -433,7 +746,7 @@ fun ChatScreen(navController: NavController, geminiVm: GeminiViewModel) {
             IconButton(
                 onClick = {
                     if (textoUsuario.isNotEmpty()) {
-                        geminiVm.preguntarAGemini(textoUsuario)
+                        geminiVm.preguntarAGeminiConContexto(textoUsuario)
                         textoUsuario = "" // Limpiar el campo
                     }
                 },
