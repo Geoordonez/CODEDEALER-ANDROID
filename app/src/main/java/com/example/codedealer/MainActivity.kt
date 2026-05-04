@@ -1,5 +1,6 @@
 package com.example.codedealer
 
+
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.ValueEventListener
@@ -41,6 +42,12 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import coil.compose.AsyncImage
+import android.net.Uri
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.firebase.storage.FirebaseStorage
 
 // --- COLORES PRINCIPALES ---
 val BluePrimary = Color(0xFF0055FF)
@@ -54,6 +61,23 @@ data class Propuesta(
     val autorId: String = "",
     val fecha: String = ""
 )
+data class Mensaje(
+    val id: String = "",
+    val remitenteId: String = "",
+    val texto: String = "",
+    val timestamp: Long = 0L
+)
+
+data class Usuario(
+    val username: String = "",
+    val email: String = "",
+    val fotoUrl: String = ""
+)
+
+fun obtenerChatId(uid1: String, uid2: String): String {
+    return if (uid1 < uid2) "${uid1}_${uid2}" else "${uid2}_${uid1}"
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,9 +116,20 @@ fun AppNavigation(auth: FirebaseAuth) {
             RegisterScreen(navController, auth)
         }
 
+        composable("chat_usuario/{otherUserId}") { backStackEntry ->
+            val otherUserId = backStackEntry.arguments?.getString("otherUserId") ?: ""
+            val currentUserId = auth.currentUser?.uid ?: ""
+            UsuarioChatScreen(navController, currentUserId, otherUserId)
+        }
+
+        composable("vista_propuesta/{autorId}") { backStackEntry ->
+            val autorId = backStackEntry.arguments?.getString("autorId") ?: ""
+            VistaPropuestaScreen(navController, autorId)
+        }
+
         composable("dashboard") { DashboardScreen(navController) }
 
-        composable("chats") { ChatsScreen(navController) }
+        composable("chats") { ChatsScreen(navController, auth) }
         // ¡Aquí está el cambio! Le pasamos el 'auth' a PublicarScreen
         composable("publicar") {
             PublicarScreen(navController, auth)
@@ -213,49 +248,76 @@ fun LoginScreen(navController: NavController, auth: FirebaseAuth) {
 // --- PANTALLA: REGISTER ---
 @Composable
 fun RegisterScreen(navController: NavController, auth: FirebaseAuth) {
-    // 1. Aquí declaramos las variables que te marcaban error
+
+    var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    val userMap = mapOf(
+        "username" to username,
+        "email" to email,
+        "fotoUrl" to "https://i.pravatar.cc/150?img=3",
+        "rol" to "usuario",
+        "fecha_registro" to System.currentTimeMillis().toString()
+    )
+
     val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopBar { navController.popBackStack() }
 
         Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+
             LogoC()
             Spacer(modifier = Modifier.height(48.dp))
 
-            // Campo de Email
+            // 👤 USERNAME
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Nombre de usuario") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 📧 EMAIL (ESTO FALTABA)
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
                 label = { Text("Email") },
                 modifier = Modifier.fillMaxWidth()
             )
+
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Campo de Password
+            // 🔒 PASSWORD
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
                 label = { Text("Password") },
                 modifier = Modifier.fillMaxWidth()
             )
+
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Botón con toda la lógica de Firebase integrada
             Button(
                 onClick = {
-                    if (email.isNotEmpty() && password.isNotEmpty()) {
+                    if (username.isNotEmpty() && email.isNotEmpty() && password.isNotEmpty()) {
+
                         auth.createUserWithEmailAndPassword(email, password)
                             .addOnCompleteListener { task ->
+
                                 if (task.isSuccessful) {
+
                                     val userId = auth.currentUser?.uid
 
                                     val userMap = mapOf(
+                                        "username" to username,
                                         "email" to email,
                                         "rol" to "usuario",
                                         "fecha_registro" to System.currentTimeMillis().toString()
@@ -266,22 +328,32 @@ fun RegisterScreen(navController: NavController, auth: FirebaseAuth) {
 
                                         database.child("Usuarios").child(userId).setValue(userMap)
                                             .addOnSuccessListener {
-                                                Toast.makeText(context, "¡Usuario guardado en BD!", Toast.LENGTH_SHORT).show()
-                                                navController.navigate("dashboard")
+                                                Toast.makeText(context, "¡Usuario creado!", Toast.LENGTH_SHORT).show()
+                                                navController.navigate("dashboard") {
+                                                    popUpTo("login") { inclusive = true }
+                                                }
                                             }
-                                            .addOnFailureListener { e ->
-                                                Toast.makeText(context, "Error BD: ${e.message}", Toast.LENGTH_LONG).show()
+                                            .addOnFailureListener {
+                                                Toast.makeText(context, "Error al guardar datos", Toast.LENGTH_LONG).show()
                                             }
                                     }
+
                                 } else {
-                                    Toast.makeText(context, "Error: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(
+                                        context,
+                                        "Error: ${task.exception?.message}",
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                 }
                             }
+
                     } else {
                         Toast.makeText(context, "Llena todos los campos", Toast.LENGTH_SHORT).show()
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
             ) {
                 Text("Register Now")
@@ -289,199 +361,172 @@ fun RegisterScreen(navController: NavController, auth: FirebaseAuth) {
         }
     }
 }
-
 // --- PANTALLA: DASHBOARD ---
 @Composable
 fun DashboardScreen(navController: NavController) {
-    // 1. Estado para guardar la lista de propuestas que descargaremos de Firebase
+
     var listaPropuestas by remember { mutableStateOf<List<Propuesta>>(emptyList()) }
+    var usuariosMap by remember { mutableStateOf<Map<String, Usuario>>(emptyMap()) }
+    var searchText by remember { mutableStateOf("") }
 
-    // 2. Descargar los datos de Firebase en tiempo real
+    val context = LocalContext.current
+
+    // 🔥 CARGAR PROPUESTAS
     LaunchedEffect(Unit) {
-        val database = FirebaseDatabase.getInstance().getReference("Propuestas")
+        val db = FirebaseDatabase.getInstance().getReference("Propuestas")
 
-        database.addValueEventListener(object : ValueEventListener {
+        db.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                val propuestasTemp = mutableListOf<Propuesta>()
-                // Recorremos cada propuesta guardada en la base de datos
+                val temp = mutableListOf<Propuesta>()
+
                 for (hijo in snapshot.children) {
                     val propuesta = hijo.getValue(Propuesta::class.java)
-                    if (propuesta != null) {
-                        propuestasTemp.add(propuesta)
-                    }
+                    if (propuesta != null) temp.add(propuesta)
                 }
-                // Las invertimos para que las más nuevas salgan hasta arriba
-                listaPropuestas = propuestasTemp.reversed()
+
+                listaPropuestas = temp.reversed()
             }
 
-            override fun onCancelled(error: DatabaseError) {
-                // Si hay un error de conexión, no hacemos nada grave por ahora
-            }
+            override fun onCancelled(error: DatabaseError) {}
         })
     }
 
+    // 🔥 CARGAR USUARIOS
+    LaunchedEffect(Unit) {
+        val db = FirebaseDatabase.getInstance().getReference("Usuarios")
+
+        db.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+
+                val tempMap = mutableMapOf<String, Usuario>()
+
+                for (userSnap in snapshot.children) {
+                    val uid = userSnap.key ?: continue
+                    val user = userSnap.getValue(Usuario::class.java)
+
+                    if (user != null) {
+                        tempMap[uid] = user
+                    }
+                }
+
+                usuariosMap = tempMap
+            }
+
+            override fun onCancelled(error: DatabaseError) {}
+        })
+    }
+
+    val propuestasFiltradas = listaPropuestas.filter {
+        it.titulo.contains(searchText, true) ||
+                it.descripcion.contains(searchText, true)
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        // Top Header
+
+        // 🔝 HEADER
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Perfil
-            Box(
-                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.Gray).clickable { navController.navigate("mis_propuestas") }
+
+            // 👤 PERFIL (YA NO GRIS SI FALLA)
+            val currentUser = FirebaseAuth.getInstance().currentUser?.uid
+            val miUsuario = usuariosMap[currentUser]
+
+            AsyncImage(
+                model = miUsuario?.fotoUrl ?: "https://i.pravatar.cc/150?u=default",
+                contentDescription = "Perfil",
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .clickable { navController.navigate("mis_propuestas") },
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
             )
-            // Buscador
+
+            // 🔍 BUSCADOR
             OutlinedTextField(
-                value = "", onValueChange = {}, placeholder = { Text("Buscar tarea") },
-                modifier = Modifier.weight(1f).height(50.dp).padding(horizontal = 8.dp),
+                value = searchText,
+                onValueChange = { searchText = it },
+                placeholder = { Text("Buscar tarea") },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(50.dp)
+                    .padding(horizontal = 8.dp),
                 shape = RoundedCornerShape(25.dp)
             )
-            // Iconos
+
             IconButton(onClick = { navController.navigate("chats") }) {
-                Icon(Icons.Default.Email, contentDescription = "Chats", tint = BluePrimary)
+                Icon(Icons.Default.Email, contentDescription = null, tint = BluePrimary)
             }
+
             IconButton(onClick = { navController.navigate("publicar") }) {
-                Icon(Icons.Default.Add, contentDescription = "Publicar", tint = BluePrimary)
+                Icon(Icons.Default.Add, contentDescription = null, tint = BluePrimary)
             }
         }
 
-        // 3. Lista de Propuestas REALES
+        // 🔥 LISTA
         LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
-            // Si no hay propuestas, podemos mostrar un mensajito
-            if (listaPropuestas.isEmpty()) {
+
+            if (propuestasFiltradas.isEmpty()) {
                 item {
                     Text(
-                        text = "Aún no hay propuestas publicadas. ¡Sé el primero!",
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                        textAlign = TextAlign.Center,
+                        "No hay resultados",
+                        modifier = Modifier.padding(16.dp),
                         color = Color.Gray
                     )
                 }
             } else {
-                // Aquí creamos una tarjeta por cada propuesta real en la BD
-                items(listaPropuestas.size) { index ->
-                    val propuesta = listaPropuestas[index]
+
+                items(propuestasFiltradas.size) { index ->
+
+                    val propuesta = propuestasFiltradas[index]
+                    val user = usuariosMap[propuesta.autorId]
 
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(120.dp)
                             .padding(vertical = 8.dp)
-                            .clickable { navController.navigate("vista_propuesta") },
+                            .clickable {
+                                navController.navigate("vista_propuesta/${propuesta.autorId}")
+                            },
                         colors = CardDefaults.cardColors(containerColor = BlueLight),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(60.dp).clip(CircleShape).background(Color.LightGray)) // Imagen placeholder
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column {
-                                // Mostramos el TÍTULO real
-                                Text(propuesta.titulo.uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
-                                // Mostramos la DESCRIPCIÓN real (limitada a 2 líneas para que no se desborde)
-                                Text(propuesta.descripcion, color = Color.White, fontSize = 12.sp, maxLines = 2)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-// --- PANTALLA: MIS PROPUESTAS ---
-@Composable
-fun MisPropuestasScreen(navController: NavController, auth: FirebaseAuth) {
-    // 1. Estado para guardar solo MIS propuestas
-    var misPropuestas by remember { mutableStateOf<List<Propuesta>>(emptyList()) }
-    val userId = auth.currentUser?.uid // El ID del usuario actual
-
-    // NUEVO: Necesitamos el contexto para mostrar el mensajito de "Eliminada"
-    val context = LocalContext.current
-
-    // 2. Descargar y filtrar datos de Firebase
-    LaunchedEffect(userId) {
-        if (userId != null) {
-            val database = FirebaseDatabase.getInstance().getReference("Propuestas")
-
-            database.addValueEventListener(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    val propuestasTemp = mutableListOf<Propuesta>()
-
-                    // Recorremos todas las propuestas
-                    for (hijo in snapshot.children) {
-                        val propuesta = hijo.getValue(Propuesta::class.java)
-
-                        // FILTRO CLAVE: Solo agregamos si el autor es el usuario actual
-                        if (propuesta != null && propuesta.autorId == userId) {
-                            propuestasTemp.add(propuesta)
-                        }
-                    }
-                    // Las invertimos para ver la más reciente primero
-                    misPropuestas = propuestasTemp.reversed()
-                }
-
-                override fun onCancelled(error: DatabaseError) {
-                    // Manejo de errores
-                }
-            })
-        }
-    }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopBar("Mi Perfil") { navController.popBackStack() }
-
-        Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(modifier = Modifier.size(150.dp).clip(CircleShape).background(Color.LightGray)) // Avatar grande
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Text("MIS TAREAS PUBLICADAS", fontWeight = FontWeight.Bold, color = BluePrimary)
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 3. Mostramos la lista o un mensaje si está vacía
-            if (misPropuestas.isEmpty()) {
-                Text("Aún no has publicado ninguna tarea.", color = Color.Gray, textAlign = TextAlign.Center)
-            } else {
-
-                // 🛑 SOLUCIÓN 1: Le agregamos .weight(1f) para darle un límite de tamaño seguro 🛑
-                LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    items(misPropuestas.size) { index ->
-                        val propuesta = misPropuestas[index]
 
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp)
-                                .background(BlueLight, RoundedCornerShape(12.dp))
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
 
-                            val tituloSeguro = propuesta.titulo.toString().uppercase()
+                            // 👤 FOTO SEGURA
+                            AsyncImage(
+                                model = user?.fotoUrl ?: "https://i.pravatar.cc/150?u=${propuesta.autorId}",
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .clip(CircleShape),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            )
 
-                            Text(tituloSeguro, color = Color.White, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(16.dp))
 
-                            IconButton(
-                                onClick = {
-                                    if (propuesta.id.isNotEmpty()) {
-                                        // 1. Apuntamos a la carpeta Propuestas y luego al ID específico
-                                        val databaseRef = FirebaseDatabase.getInstance().getReference("Propuestas").child(propuesta.id)
+                            Column {
 
-                                        // 2. Ejecutamos la eliminación
-                                        databaseRef.removeValue()
-                                            .addOnSuccessListener {
-                                                Toast.makeText(context, "Tarea eliminada", Toast.LENGTH_SHORT).show()
-                                            }
-                                            .addOnFailureListener {
-                                                Toast.makeText(context, "Error al eliminar", Toast.LENGTH_SHORT).show()
-                                            }
-                                    }
-                                }
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = "Borrar", tint = Color.White)
+                                Text(
+                                    propuesta.titulo.uppercase(),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Text(
+                                    propuesta.descripcion,
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    maxLines = 2
+                                )
                             }
                         }
                     }
@@ -490,30 +535,298 @@ fun MisPropuestasScreen(navController: NavController, auth: FirebaseAuth) {
         }
     }
 }
-// --- PANTALLA: VISTA PROPUESTA ---
+
+// --- PANTALLA: MIS PROPUESTAS ---
 @Composable
-fun VistaPropuestaScreen(navController: NavController) {
+fun MisPropuestasScreen(navController: NavController, auth: FirebaseAuth) {
+
+    val userId = auth.currentUser?.uid ?: ""
+    var usuario by remember { mutableStateOf<Usuario?>(null) }
+    var misPropuestas by remember { mutableStateOf<List<Propuesta>>(emptyList()) }
+
+    val context = LocalContext.current
+
+    // 🔥 SELECTOR DE IMAGEN
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+
+        uri?.let {
+            val storageRef = FirebaseStorage.getInstance()
+                .reference
+                .child("profile_images/$userId.jpg")
+
+            storageRef.putFile(it)
+                .addOnSuccessListener {
+                    storageRef.downloadUrl.addOnSuccessListener { downloadUrl ->
+
+                        FirebaseDatabase.getInstance()
+                            .getReference("Usuarios")
+                            .child(userId)
+                            .child("fotoUrl")
+                            .setValue(downloadUrl.toString())
+
+                        Toast.makeText(context, "Foto actualizada", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .addOnFailureListener {
+                    Toast.makeText(context, "Error al subir imagen", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    // 🔥 CARGAR USUARIO
+    LaunchedEffect(userId) {
+        val db = FirebaseDatabase.getInstance()
+            .getReference("Usuarios")
+            .child(userId)
+
+        db.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                usuario = snapshot.getValue(Usuario::class.java)
+            }
+
+            override fun onCancelled(error: DatabaseError) {}
+        })
+    }
+
+    // 🔥 CARGAR MIS PROPUESTAS
+    LaunchedEffect(userId) {
+        val db = FirebaseDatabase.getInstance().getReference("Propuestas")
+
+        db.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+
+                val temp = mutableListOf<Propuesta>()
+
+                for (hijo in snapshot.children) {
+                    val propuesta = hijo.getValue(Propuesta::class.java)
+
+                    if (propuesta != null && propuesta.autorId == userId) {
+                        temp.add(propuesta)
+                    }
+                }
+
+                misPropuestas = temp.reversed()
+            }
+
+            override fun onCancelled(error: DatabaseError) {}
+        })
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+
+        TopBar("Mi Perfil") { navController.popBackStack() }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+
+            // 🔥 FOTO PERFIL
+            AsyncImage(
+                model = usuario?.fotoUrl ?: "https://i.pravatar.cc/150",
+                contentDescription = null,
+                modifier = Modifier
+                    .size(120.dp)
+                    .clip(CircleShape)
+                    .clickable { launcher.launch("image/*") }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                usuario?.username ?: "Usuario",
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text("MIS TAREAS", fontWeight = FontWeight.Bold, color = BluePrimary)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 🔥 LISTA
+            LazyColumn {
+
+                if (misPropuestas.isEmpty()) {
+                    item {
+                        Text(
+                            "No has publicado tareas aún",
+                            color = Color.Gray,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                } else {
+
+                    items(misPropuestas.size) { index ->
+                        val propuesta = misPropuestas[index]
+
+                        var showDialog by remember { mutableStateOf(false) }
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            colors = CardDefaults.cardColors(containerColor = BlueLight),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+
+                            Column(modifier = Modifier.padding(16.dp)) {
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+
+                                    Column(modifier = Modifier.weight(1f)) {
+
+                                        Text(
+                                            propuesta.titulo,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        Text(
+                                            propuesta.descripcion,
+                                            color = Color.White,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+
+                                    // 🗑️ BOTÓN ELIMINAR
+                                    IconButton(onClick = {
+                                        showDialog = true
+                                    }) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Eliminar",
+                                            tint = Color.White
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 🔥 CONFIRMAR ELIMINACIÓN
+                        if (showDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showDialog = false },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+
+                                            val db = FirebaseDatabase.getInstance()
+                                                .getReference("Propuestas")
+
+                                            db.child(propuesta.id).removeValue()
+                                                .addOnSuccessListener {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Propuesta eliminada",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                                .addOnFailureListener {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Error al eliminar",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+
+                                            showDialog = false
+                                        }
+                                    ) {
+                                        Text("Eliminar", color = Color.Red)
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(
+                                        onClick = { showDialog = false }
+                                    ) {
+                                        Text("Cancelar")
+                                    }
+                                },
+                                title = { Text("Eliminar propuesta") },
+                                text = { Text("¿Seguro que quieres eliminar esta tarea?") }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun VistaPropuestaScreen(navController: NavController, autorId: String) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopBar { navController.popBackStack() }
+
         Card(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
             colors = CardDefaults.cardColors(containerColor = BlueLight),
             shape = RoundedCornerShape(24.dp)
         ) {
             Column(
-                modifier = Modifier.fillMaxSize().padding(24.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Box(modifier = Modifier.size(80.dp).clip(CircleShape).background(Color.LightGray))
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("BUSCO PROGRAMADOR", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                Text("ESPECIALIZADO EN PYTHON", color = Color.White, fontSize = 16.sp, textAlign = TextAlign.Center)
-                Spacer(modifier = Modifier.height(32.dp))
-                Text("especificacion de la tarea...", color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
 
+                // Imagen
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(Color.LightGray)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Título (puedes hacerlo dinámico después)
+                Text(
+                    "BUSCO PROGRAMADOR",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+
+                // Subtítulo
+                Text(
+                    "ESPECIALIZADO EN PYTHON",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Descripción
+                Text(
+                    "especificacion de la tarea...",
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // 🔥 BOTÓN FUNCIONAL
                 Button(
-                    onClick = { navController.navigate("chat") },
-                    modifier = Modifier.fillMaxWidth(0.6f).height(40.dp),
+                    onClick = {
+                        navController.navigate("chat_usuario/$autorId")
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth(0.6f)
+                        .height(40.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
                 ) {
                     Text("CONTACTAR")
@@ -624,74 +937,157 @@ fun PublicarScreen(navController: NavController, auth: FirebaseAuth) {
 
 // --- PANTALLA: CHATS (LISTA) ---
 @Composable
-fun ChatsScreen(navController: NavController) {
+fun ChatsScreen(navController: NavController, auth: FirebaseAuth) {
+
+    val currentUserId = auth.currentUser?.uid ?: ""
+
+    var listaChats by remember { mutableStateOf<List<String>>(emptyList()) }
+    var usuariosMap by remember { mutableStateOf<Map<String, Usuario>>(emptyMap()) }
+
+    // 🔄 Leer chats
+    LaunchedEffect(Unit) {
+        val db = FirebaseDatabase.getInstance().getReference("Chats")
+
+        db.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+
+                val temp = mutableListOf<String>()
+
+                for (chatSnap in snapshot.children) {
+                    val chatId = chatSnap.key ?: continue
+
+                    if (chatId.contains(currentUserId)) {
+
+                        val partes = chatId.split("_")
+                        val otherUserId = if (partes[0] == currentUserId) {
+                            partes[1]
+                        } else {
+                            partes[0]
+                        }
+
+                        temp.add(otherUserId)
+                    }
+                }
+
+                listaChats = temp
+            }
+
+            override fun onCancelled(error: DatabaseError) {}
+        })
+    }
+
+    // 🔄 Leer usuarios
+    LaunchedEffect(Unit) {
+        val db = FirebaseDatabase.getInstance().getReference("Usuarios")
+
+        db.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+
+                val tempMap = mutableMapOf<String, Usuario>()
+
+                for (userSnap in snapshot.children) {
+                    val uid = userSnap.key ?: continue
+                    val user = userSnap.getValue(Usuario::class.java)
+
+                    if (user != null) {
+                        tempMap[uid] = user
+                    }
+                }
+
+                usuariosMap = tempMap
+            }
+
+            override fun onCancelled(error: DatabaseError) {}
+        })
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        // Le ponemos título a la barra para saber dónde estamos
+
         TopBar("Mis Mensajes") { navController.popBackStack() }
 
-        OutlinedTextField(
-            value = "",
-            onValueChange = {},
-            placeholder = { Text("Buscar chat") },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            shape = RoundedCornerShape(25.dp)
-        )
+        LazyColumn {
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
-
-            // --- 1. BOTÓN ESPECIAL PARA LA IA (Siempre al principio) ---
+            // 🤖 CHAT IA
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .background(BluePrimary, RoundedCornerShape(24.dp)) // Azul fuerte para resaltar
-                        .padding(12.dp)
-                        .clickable { navController.navigate("chat") }, // Manda a la pantalla de Gemini
+                        .background(BluePrimary)
+                        .clickable { navController.navigate("chat") }
+                        .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .background(Color.White),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Icon(Icons.Default.Face, contentDescription = null, tint = Color.White)
 
-                        Icon(Icons.Default.Face, contentDescription = null, tint = BluePrimary)
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+
                     Column {
                         Text("ASISTENTE VIRTUAL", color = Color.White, fontWeight = FontWeight.Bold)
-                        Text("Pregúntale lo que quieras a Gemini", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+                        Text("Pregúntale lo que quieras", color = Color.White.copy(0.7f), fontSize = 12.sp)
                     }
                 }
+
+                Divider()
             }
 
-            // --- 2. LISTA DE CHATS NORMALES (Usuarios) ---
-            items(6) { indice ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .background(BlueLight, RoundedCornerShape(24.dp)) // Azul claro para usuarios
-                        .padding(12.dp)
-                        .clickable {
-                            // Aquí no mandamos a "chat" (IA), por ahora no hace nada
-                            // o podrías mandarlo a una pantalla de chat genérica
-                        },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(modifier = Modifier.size(50.dp).clip(CircleShape).background(Color.LightGray))
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text("USUARIO DE PRUEBA $indice", color = Color.White, fontWeight = FontWeight.Bold)
+            // 👤 CHATS
+            items(listaChats.size) { index ->
+
+                val otherUserId = listaChats[index]
+                val user = usuariosMap[otherUserId]
+
+                Column {
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                navController.navigate("chat_usuario/$otherUserId")
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+
+                        AsyncImage(
+                            model = user?.fotoUrl ?: "https://i.pravatar.cc/150",
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(55.dp)
+                                .clip(CircleShape)
+                        )
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+
+                            Text(
+                                user?.username ?: "Cargando...",
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Text(
+                                "Toca para chatear",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+
+                        Text("Ahora", fontSize = 10.sp, color = Color.Gray)
+                    }
+
+                    // 🔥 DIVIDER PRO
+                    Divider(
+                        modifier = Modifier.padding(start = 80.dp),
+                        thickness = 0.5.dp,
+                        color = Color.LightGray
+                    )
                 }
             }
         }
     }
 }
+
+
 
 // --- PANTALLA: CHAT (MENSAJES) ---
 @Composable
@@ -757,6 +1153,109 @@ fun ChatScreen(navController: NavController, geminiVm: GeminiViewModel) {
                     contentDescription = "Enviar",
                     tint = if (estaCargando) Color.Gray else BluePrimary
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun UsuarioChatScreen(
+    navController: NavController,
+    currentUserId: String,
+    otherUserId: String
+) {
+
+    var mensajeTexto by remember { mutableStateOf("") }
+    var listaMensajes by remember { mutableStateOf<List<Mensaje>>(emptyList()) }
+
+    val chatId = obtenerChatId(currentUserId, otherUserId)
+
+    LaunchedEffect(chatId) {
+        val db = FirebaseDatabase.getInstance().getReference("Chats").child(chatId)
+
+        db.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val temp = mutableListOf<Mensaje>()
+                for (hijo in snapshot.children) {
+                    val msg = hijo.getValue(Mensaje::class.java)
+                    if (msg != null) temp.add(msg)
+                }
+                listaMensajes = temp.sortedBy { it.timestamp }
+            }
+
+            override fun onCancelled(error: DatabaseError) {}
+        })
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+
+        TopBar("Chat") { navController.popBackStack() }
+
+        LazyColumn(
+            modifier = Modifier.weight(1f).padding(12.dp)
+        ) {
+            items(listaMensajes.size) { i ->
+                val msg = listaMensajes[i]
+                val esMio = msg.remitenteId == currentUserId
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = if (esMio) Arrangement.End else Arrangement.Start
+                ) {
+
+                    Box(
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .background(
+                                if (esMio) BluePrimary else Color.LightGray,
+                                RoundedCornerShape(12.dp)
+                            )
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            msg.texto,
+                            color = if (esMio) Color.White else Color.Black
+                        )
+                    }
+                }
+            }
+        }
+
+        Row(modifier = Modifier.padding(8.dp)) {
+
+            BasicTextField(
+                value = mensajeTexto,
+                onValueChange = { mensajeTexto = it },
+                modifier = Modifier
+                    .weight(1f)
+                    .background(Color.White, RoundedCornerShape(20.dp))
+                    .padding(12.dp)
+            )
+
+            IconButton(
+                onClick = {
+                    if (mensajeTexto.isNotEmpty()) {
+
+                        val db = FirebaseDatabase.getInstance()
+                            .getReference("Chats")
+                            .child(chatId)
+
+                        val id = db.push().key ?: return@IconButton
+
+                        val msg = Mensaje(
+                            id = id,
+                            remitenteId = currentUserId,
+                            texto = mensajeTexto,
+                            timestamp = System.currentTimeMillis()
+                        )
+
+                        db.child(id).setValue(msg)
+
+                        mensajeTexto = ""
+                    }
+                }
+            ) {
+                Icon(Icons.Default.Send, contentDescription = null, tint = BluePrimary)
             }
         }
     }
